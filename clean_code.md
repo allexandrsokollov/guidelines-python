@@ -580,6 +580,429 @@ Whenever you touch code:
 
 Small improvements compound.
 
+
+Here is a clean extra section you can append to the guideline.
+
+---
+
+## 27. Do not bypass quality tools without a very strong reason
+
+Do not treat linters, type checkers, and static analysis as obstacles to silence.
+Treat them as feedback tools that help keep the codebase healthy.
+
+Avoid using things like:
+
+* `if TYPE_CHECKING:` as a routine escape hatch
+* `# noqa`
+* `# type: ignore`
+* `# pylint: disable=...`
+* `# pragma: no cover`
+* broad tool-level ignores in config
+* fake abstractions created only to satisfy tooling without improving design
+
+These mechanisms are sometimes necessary, but they should be **rare exceptions**, not normal practice.
+
+### Why this matters
+
+Every bypass weakens the contract of the code.
+
+When developers constantly suppress warnings instead of fixing root causes, the codebase becomes:
+
+* harder to trust
+* harder to refactor
+* harder to navigate
+* easier to break silently
+
+If the tool reports a problem, the first question should be:
+
+**“What is wrong with the code or design?”**
+
+not:
+
+**“How do I silence this warning?”**
+
+---
+
+## 28. `if TYPE_CHECKING:` should not hide poor structure
+
+`if TYPE_CHECKING:` can be useful in rare cases, but it often appears because the code has structural problems:
+
+* circular imports
+* tangled module boundaries
+* weak dependency direction
+* domain and infrastructure mixed together
+
+Bad:
+
+```python
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.users.service import UserService
+```
+
+If this appears often, it is usually a sign that imports and module responsibilities need to be reorganized.
+
+Prefer:
+
+* extracting shared interfaces or DTOs into a lower-level module
+* separating domain models from infrastructure code
+* reducing coupling between modules
+* moving common types into dedicated modules like `dto.py`, `types.py`, or `interfaces.py`
+
+Use `if TYPE_CHECKING:` only when there is a real technical need, not as a standard architectural pattern.
+
+---
+
+## 29. Do not hide type problems with `# type: ignore`
+
+`# type: ignore` should be a last resort.
+
+Bad:
+
+```python
+result = some_untyped_library_call()  # type: ignore
+```
+
+Better:
+
+* write an explicit adapter
+* narrow the type properly
+* add a protocol or interface
+* introduce a typed wrapper
+* cast only where the contract is actually known
+
+Better example:
+
+```python
+from typing import cast
+
+raw_user = external_client.get_user()
+user = cast(UserDTO, raw_user)
+```
+
+Even `cast()` should be used carefully, but it is still better than silently suppressing the checker without explanation.
+
+If suppression is truly unavoidable, it should be:
+
+* local
+* specific
+* documented
+
+Bad:
+
+```python
+value = get_value()  # type: ignore
+```
+
+Less bad:
+
+```python
+value = get_value()  # type: ignore[arg-type]  # third-party stub is incorrect here
+```
+
+Silence only the exact issue, and explain why.
+
+---
+
+## 30. Do not hide lint problems with `# noqa`
+
+`# noqa` is often used to keep bad code instead of improving it.
+
+Bad:
+
+```python
+from app.users.service import UserService, UserManager, UserFactory  # noqa
+```
+
+Ask instead:
+
+* Is this import really needed here?
+* Is the module doing too much?
+* Is the line too long because the code is badly structured?
+* Is the naming too vague or repetitive?
+
+Fix the code first. Suppress only when the warning is truly wrong or unavoidable.
+
+The same applies to:
+
+* `# pylint: disable=...`
+* `ruff: noqa`
+* file-level ignore comments
+* broad ignore rules in config
+
+A suppressed warning should feel unusual and slightly uncomfortable.
+
+---
+
+## 31. Do not use `# pragma: no cover` to avoid testing hard code
+
+If code is hard to test, that is often a design signal.
+
+Bad:
+
+```python
+def process_payment() -> None:
+    ...
+    except Exception:  # pragma: no cover
+        ...
+```
+
+Ask instead:
+
+* Why is this hard to test?
+* Is the function doing too much?
+* Are side effects mixed with business logic?
+* Should dependencies be injected?
+* Can error handling be extracted?
+
+Coverage exclusions are acceptable for truly unreachable or environment-specific code, but not for ordinary business paths that are simply inconvenient to test.
+
+---
+
+## 32. Never normalize bypassing tools
+
+Do not let the codebase develop habits like:
+
+* “just add `noqa`”
+* “just ignore typing here”
+* “just disable the rule”
+* “just exclude it from coverage”
+
+That culture slowly destroys code quality.
+
+A healthy rule is:
+
+**Every ignore must justify itself.
+No ignore should exist just because fixing the code is inconvenient.**
+
+---
+
+## 33. Prefer solving root causes
+
+When a tool complains, prefer these fixes:
+
+* restructure imports
+* split modules
+* introduce DTOs
+* add explicit types
+* define protocols
+* wrap untyped libraries
+* simplify functions
+* remove dead code
+* make dependencies directional and clear
+
+The goal is not to make the linter quiet.
+
+The goal is to make the code correct, clear, and easy to trust.
+
+---
+
+## Practical rule
+
+If you need one of these:
+
+* `if TYPE_CHECKING:`
+* `# noqa`
+* `# type: ignore`
+* `# pragma: no cover`
+
+stop and ask:
+
+**Is this solving a real problem, or hiding one?**
+
+If it is hiding one, fix the design instead.
+
+---
+
+And here is a shorter version in one sentence, if you want to insert it into the checklist style:
+
+**Do not bypass linters, type checkers, or coverage tools unless it is truly unavoidable; repeated use of `if TYPE_CHECKING`, `noqa`, `type: ignore`, or `pragma: no cover` usually signals design problems that should be fixed at the root.**
+
+
+Here is a clean section you can append as well.
+
+---
+
+## 34. Avoid local imports inside functions
+
+Imports should normally be placed at the **top of the module**, not inside functions, methods, or branches.
+
+Bad:
+
+```python
+def create_user_service() -> UserService:
+    from app.users.service import UserService
+    return UserService()
+```
+
+Bad:
+
+```python
+def process_order(order: Order) -> None:
+    if order.is_external:
+        from app.integrations.external import send_order
+        send_order(order)
+```
+
+Better:
+
+```python
+from app.integrations.external import send_order
+from app.users.service import UserService
+
+
+def create_user_service() -> UserService:
+    return UserService()
+
+
+def process_order(order: Order) -> None:
+    if order.is_external:
+        send_order(order)
+```
+
+---
+
+## 35. Why local imports are harmful
+
+Local imports are often not a solution.
+They are often a way to hide structural problems.
+
+Usually they appear because of:
+
+* circular imports
+* bad module boundaries
+* mixed responsibilities
+* dependency direction issues
+* attempts to avoid fixing architecture properly
+
+They make code:
+
+* harder to read
+* harder to reason about
+* harder to analyze statically
+* harder to test
+* more surprising for other developers
+
+When reading a module, a developer should be able to understand its dependencies from the top of the file.
+
+Imports are part of the module contract.
+Do not hide them in the middle of logic.
+
+---
+
+## 36. Local imports usually signal a design problem
+
+If you need a local import, ask:
+
+* why do these modules depend on each other?
+* should shared types be extracted into a separate module?
+* are domain and infrastructure too tightly coupled?
+* does this class know too much?
+* should I invert the dependency with an interface or protocol?
+
+Very often the right fix is one of these:
+
+* split the module
+* move shared DTOs or types into a lower-level module
+* extract interfaces
+* reduce coupling
+* reorganize feature boundaries
+
+Bad:
+
+```python
+# users/service.py
+def create_user(...) -> None:
+    from app.notifications.service import send_welcome_email
+    ...
+```
+
+```python
+# notifications/service.py
+def send_welcome_email(...) -> None:
+    from app.users.service import get_user_email
+    ...
+```
+
+This is not an import problem.
+This is an architecture problem.
+
+---
+
+## 37. Keep dependencies visible and explicit
+
+A clean module should show its dependencies immediately.
+
+Good:
+
+```python
+from app.notifications.interfaces import NotificationSender
+from app.users.dto import CreateUserRequest, UserResponse
+from app.users.repository import UserRepository
+```
+
+This is much better than forcing the reader to discover dependencies later inside method bodies.
+
+Visible imports improve:
+
+* readability
+* predictability
+* static analysis
+* maintainability
+
+---
+
+## 38. Rare exceptions may exist, but they should stay rare
+
+A local import may be acceptable in narrow technical cases, for example:
+
+* optional dependency that is not always installed
+* heavy dependency used only in a very specific execution path
+* startup-sensitive code where import cost truly matters
+* temporary compatibility boundary with third-party code
+
+But even in these cases:
+
+* keep it explicit
+* document why it is local
+* do not make it the default style
+* do not use it to hide circular imports
+
+Bad:
+
+```python
+def export_report(report: Report) -> bytes:
+    from some_library import export
+    return export(report)
+```
+
+Less bad:
+
+```python
+def export_report(report: Report) -> bytes:
+    # Local import because this dependency is optional and only needed for PDF export.
+    from some_library import export
+
+    return export(report)
+```
+
+If there is no strong technical reason, the import belongs at module level.
+
+---
+
+## 39. Practical rule
+
+**If you need a local import, first assume the code structure is wrong.
+Fix the dependency design before choosing the import workaround.**
+
+---
+
+And here is a short checklist-style sentence for insertion into the main guideline:
+
+**Avoid local imports inside functions and methods; they usually hide circular dependencies or poor module boundaries, and dependencies should stay visible at the top of the file.**
+
+
 ---
 
 # Practical checklist
