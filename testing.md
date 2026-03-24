@@ -130,3 +130,26 @@ To improve readability and consistency of tests, it is useful to follow the AAA 
 This approach helps make tests more structured, understandable, and maintainable. It works especially well in combination with factories and endpoint-based testing, where it is important not to mix scenario setup, execution, and assertions into one hard-to-read sequence of actions.
 
 I can also make it sound more natural and article-ready in English, not just directly translated.
+
+**10 . Validate the entire response, not just selected fields**
+When testing endpoints, it is often tempting to verify only a few individual fields in the response. However, this approach can easily miss unintended changes in the response structure, missing fields, renamed fields, or incorrect default values.
+
+Whenever it is reasonable, tests should validate the entire response body rather than only selected fragments. This makes tests more reliable as protection for the actual contract between the service and its consumers.
+
+This is especially important when:
+
+the response contains many fields;
+nested objects are returned;
+the endpoint acts as a contract for other services or frontend clients;
+accidental response changes may break integrations.
+
+At the same time, writing full response assertions manually can become verbose and difficult to maintain. This is where factories can help. Factories are useful not only for creating input data, but also for constructing expected response objects in a consistent and scalable way.
+
+This provides several advantages:
+
+less boilerplate in assertions;
+clearer and more maintainable tests;
+a consistent way to describe expected responses;
+easier updates when response models evolve.
+
+As a result, tests become better at protecting response contracts while remaining readable and convenient to extend.
