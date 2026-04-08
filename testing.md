@@ -1,155 +1,176 @@
-Here is the English translation:
+# Python Testing Rules (Strict)
 
-**Core Principles**
+These rules are mandatory for application tests unless a documented exception is approved in review.
 
-**1. Test behavior, not internal implementation**
-Tests should verify not that one method called another, but that the system as a whole behaved as expected.
+## 1. Test behavior, not implementation
 
-For example, instead of checking whether a specific function was called, it is more useful to verify:
+Required:
 
-* what HTTP response the endpoint returned;
-* what data was saved in the database;
-* whether a message was published to the broker;
-* whether the state of a business entity changed;
-* whether the expected side effect occurred.
+- verify externally observable behavior
+- assert business outcomes, persisted state, and published effects
+- keep tests resilient to refactoring
 
-Such tests are much more resilient to refactoring. If the internal implementation changes but the system’s behavior remains the same, the tests should not break.
+Forbidden:
 
-**2. Use test containers**
-One of the key elements of this approach is the use of test containers to spin up real dependencies: databases, cache, message broker, and other services required by the application.
+- asserting that one internal method called another as the main proof of correctness
+- coupling tests to private implementation details
 
-This is important for several reasons:
+## 2. Prefer testing through real entry points
 
-* we avoid a significant portion of mocks;
-* we use real mechanisms for creating and reading objects;
-* we verify data serialization and deserialization;
-* we verify object mapping;
-* we test the handling of incoming and outgoing messages;
-* we verify the application’s interaction with the infrastructure it actually runs on.
+For application behavior, prefer testing through:
 
-As a result, tests become closer to the production environment and help uncover errors that cannot be detected with fully isolated testing.
+- HTTP endpoints
+- message handlers
+- CLI commands
+- public service interfaces
 
-At the same time, it is important to remember that the closer tests are to the real environment, the more important determinism becomes: state must be isolated, data must be controlled, and results must be reproducible.
+Required:
 
-**3. Minimize mocks, but do not abandon them entirely**
-The main focus should be on testing with real internal components of the system, but a complete rejection of mocks is not always justified.
+- exercise the same paths real callers use
+- cover routing, validation, business logic, serialization, and infrastructure integration where relevant
 
-Mocks are still useful when dealing with external boundaries of our area of responsibility:
+Forbidden:
 
-* third-party HTTP APIs;
-* payment systems;
-* email and SMS providers;
-* unstable external integrations;
-* expensive or slow external calls;
-* hard-to-reproduce error-case scenarios.
+- excessive unit slicing that misses real system behavior
 
-So the principle can be formulated as follows:
-everything related to our internal logic and infrastructure should, whenever possible, be tested for real; everything outside our control may be mocked.
+## 3. Use real internal dependencies where practical
 
-**4. Use factories for test data**
-For convenient and scalable creation of test data, it is useful to use factories, for example based on factory_boy.
+Required:
 
-Once factories for the main entities have been defined, we get the following benefits:
+- use real databases, caches, brokers, and other internal infrastructure when the test scope depends on them
+- prefer test containers or equivalent isolated environments for integration tests
 
-* faster writing of new tests;
-* less duplicated setup code;
-* more understandable test structure;
-* a consistent way of creating objects;
-* reduced cognitive load when reading tests.
+Why:
 
-Factories are especially useful in combination with integration tests because they allow you to quickly assemble full scenarios with minimal noise in the code.
+- it verifies object mapping and serialization
+- it catches configuration and integration failures early
+- it reduces false confidence from heavily mocked tests
 
-**5. Endpoint-based testing**
-To verify application functionality, it makes sense to call endpoints directly, since the endpoint is the actual point of interaction between the client and the system.
+## 4. Mock only boundaries you do not control
 
-This approach allows multiple layers to be tested at once:
+Mocks are acceptable for:
 
-* routing;
-* input validation;
-* business logic;
-* response format and structure;
-* database interaction;
-* side effects;
-* interaction with queues, cache, and other components.
+- third-party HTTP APIs
+- payment providers
+- email or SMS providers
+- unstable or expensive external systems
+- hard-to-reproduce external failure modes
 
-The advantage of this approach is that we test not a single function “in a vacuum,” but a complete scenario that a real user or another service actually works with.
+Forbidden:
 
-Combined with test containers, this makes it possible to bring the test environment as close as possible to production and catch more errors during development.
+- mocking core internal collaborators by default
+- using mocks to avoid testing real internal flows
 
-**6. Test not only the happy path**
-One of the common problems with test suites is an excessive focus on successful scenarios. In practice, however, a significant portion of errors arise precisely in edge cases and negative scenarios.
+## 5. Keep tests deterministic and isolated
 
-Therefore, in addition to the happy path, tests should cover:
+Required:
 
-* invalid input data;
-* missing required fields;
-* state conflicts;
-* duplicates;
-* constraint violations;
-* authorization errors and insufficient permissions;
-* repeated message delivery;
-* empty or partially filled data;
-* non-standard state transitions.
+- isolate state between tests
+- control input data and time-sensitive behavior
+- make results reproducible locally and in CI
 
-Tests for such scenarios often provide more value than a large number of superficial checks of internal calls.
+Forbidden:
 
-**7. Verify not only the response, but also the side effects**
-If a test calls an endpoint, it is not enough to check only the HTTP status code and the response body. Often, the main value of the scenario lies in what happened after the call.
+- hidden shared state between tests
+- order-dependent tests
+- reliance on random data without controlled seeds or explicit values
 
-For example, it is important to additionally verify:
+## 6. Use factories or builders for test data
 
-* whether a record was created in the database;
-* whether the object’s status changed;
-* whether an event was sent to the broker;
-* whether the cache was updated;
-* whether an audit log was created;
-* whether a background task was queued.
+Required:
 
-This makes tests more complete and allows them to truly verify business functionality, not just the external response contract.
+- create reusable factories/builders for common entities and requests
+- keep scenario setup concise and readable
 
-**8. Protect system contracts**
-If the system interacts with other services via HTTP APIs or a message broker, tests must protect not only internal logic but also contracts.
+Forbidden:
 
-This may include verifying:
+- large repeated setup blocks across tests
+- hand-building the same object graphs in many places
 
-* the structure of JSON responses;
-* required fields;
-* data types;
-* the format of serialized messages;
-* contract compatibility when changes are introduced.
+## 7. Cover failure paths, not only happy paths
 
-This is especially important in distributed systems, where a change in the response or event format can break other services even if the internal logic continues to work correctly.
+Tests must cover representative negative scenarios, including:
 
-**9. Use the AAA structure**
-To improve readability and consistency of tests, it is useful to follow the AAA structure (Arrange, Act, Assert):
+- invalid input
+- missing required fields
+- permission failures
+- duplicates and conflicts
+- invalid state transitions
+- repeated deliveries or duplicate events
+- empty or partial data
+- unexpected 500 paths where relevant
 
-* **Arrange** — prepare the data and environment;
-* **Act** — perform the action being tested;
-* **Assert** — verify the result.
+See [error_handling.md](/Users/allxndrskllv/PycharmProjects/guidelines-python/error_handling.md) for required error contract behavior.
 
-This approach helps make tests more structured, understandable, and maintainable. It works especially well in combination with factories and endpoint-based testing, where it is important not to mix scenario setup, execution, and assertions into one hard-to-read sequence of actions.
+## 8. Assert side effects, not only responses
 
-I can also make it sound more natural and article-ready in English, not just directly translated.
+When a scenario changes the system, assert the effect completely.
 
-**10 . Validate the entire response, not just selected fields**
-When testing endpoints, it is often tempting to verify only a few individual fields in the response. However, this approach can easily miss unintended changes in the response structure, missing fields, renamed fields, or incorrect default values.
+Required where relevant:
 
-Whenever it is reasonable, tests should validate the entire response body rather than only selected fragments. This makes tests more reliable as protection for the actual contract between the service and its consumers.
+- database state changes
+- emitted events or messages
+- cache updates
+- audit records
+- queued background tasks
 
-This is especially important when:
+Forbidden:
 
-the response contains many fields;
-nested objects are returned;
-the endpoint acts as a contract for other services or frontend clients;
-accidental response changes may break integrations.
+- treating status code alone as sufficient proof of success
 
-At the same time, writing full response assertions manually can become verbose and difficult to maintain. This is where factories can help. Factories are useful not only for creating input data, but also for constructing expected response objects in a consistent and scalable way.
+## 9. Protect response and message contracts
 
-This provides several advantages:
+Required:
 
-less boilerplate in assertions;
-clearer and more maintainable tests;
-a consistent way to describe expected responses;
-easier updates when response models evolve.
+- validate response shape, required fields, and types
+- validate serialized event/message structure when other systems depend on it
+- prefer asserting the full response body when reasonable
 
-As a result, tests become better at protecting response contracts while remaining readable and convenient to extend.
+Forbidden:
+
+- checking only one or two fields when the full contract matters
+- allowing silent response shape drift
+
+## 10. Structure tests clearly
+
+Use `Arrange`, `Act`, `Assert`.
+
+Required:
+
+- keep setup, action, and assertions visually distinct
+- keep one behavior scenario per test where practical
+
+Forbidden:
+
+- mixing setup and assertions into one unreadable flow
+- multiple unrelated behaviors in one test
+
+## 11. Name tests by behavior
+
+Required:
+
+- use names that describe the scenario and expected outcome
+
+Forbidden:
+
+- generic names like `test_1`, `test_success`, or `test_service`
+
+## 12. Anti-patterns (not allowed)
+
+- tests that mainly verify mock call counts for internal behavior
+- broad fixture magic that hides scenario intent
+- assertions so weak that contract regressions pass unnoticed
+- tests that depend on execution order
+- duplicate setup that should be a factory
+
+## 13. Pre-merge checklist
+
+Before merge, confirm:
+
+- critical behavior is covered through real entry points
+- internal infrastructure is tested with real components where it matters
+- external dependencies are the only major mocks
+- negative paths are covered
+- side effects are asserted
+- contract responses/messages are protected
+- tests are deterministic and readable

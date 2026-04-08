@@ -1,185 +1,81 @@
-# Python / FastAPI error handling guideline
+# Python and FastAPI Error Handling Rules (Strict)
 
-## 1. Separate business errors from unexpected failures
+These rules are mandatory for API services.
 
-Do not treat all errors the same.
+## 1. Classify errors into two categories only
 
-**Business errors** are expected cases:
+Every failure must be treated as either:
 
-* user not found
-* email already exists
-* forbidden action
-* invalid state transition
+- domain/business error: expected rule violation
+- unexpected/system error: infrastructure failure or bug
 
-**Unexpected errors** are real failures:
+Business errors are returned as mapped 4xx responses.
+Unexpected errors are logged with traceback and returned as 500.
 
-* database is down
-* external service timeout
-* bug in code
-* unhandled exception
+## 2. Business logic must not raise transport exceptions
 
-Business errors should be raised intentionally.
-Unexpected errors should be logged and returned as `500 Internal Server Error`.
+Required:
 
----
+- raise domain exceptions in services and domain layer
+- map domain exceptions to HTTP in API layer only
 
-## 2. Do not raise `HTTPException` in business logic
+Forbidden:
 
-`HTTPException` should stay in the API layer.
+- raising `HTTPException` from service/domain code
 
-Bad:
+## 3. Use one exception hierarchy
 
-```python
-from fastapi import HTTPException
-
-def get_user(user_id: int) -> User:
-    user = repo.get(user_id)
-    if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
-    return user
-```
-
-Better:
-
-```python
-class UserNotFoundError(Exception):
-    pass
-
-
-def get_user(user_id: int) -> User:
-    user = repo.get(user_id)
-    if user is None:
-        raise UserNotFoundError("User not found")
-    return user
-```
-
----
-
-## 3. Create your own exception hierarchy
-
-Use custom exceptions for domain problems.
+Define and reuse a shared hierarchy, for example:
 
 ```python
 class AppError(Exception):
-    pass
+    error_code = "app_error"
 
 
 class DomainError(AppError):
-    pass
+    error_code = "domain_error"
 
 
 class NotFoundError(DomainError):
-    pass
+    error_code = "not_found"
 
 
 class ConflictError(DomainError):
-    pass
-
-
-class PermissionDeniedError(DomainError):
-    pass
-
-
-class UserNotFoundError(NotFoundError):
-    pass
-
-
-class EmailAlreadyExistsError(ConflictError):
-    pass
+    error_code = "conflict"
 ```
 
-This makes error handling predictable and easy to maintain.
+Required:
 
----
+- domain exceptions must have stable machine-readable error codes
+- exception class names must reflect business language
 
-## 4. Use dedicated `_raise_if_*` helpers for business rules
+## 4. Validate business invariants explicitly
 
-If a condition represents an important business rule, move it into a small helper.
+Use named guard helpers for important business checks.
 
 ```python
-class OrderAlreadyPaidError(DomainError):
-    pass
-
-
 def _raise_if_order_already_paid(order: Order) -> None:
     if order.status == "paid":
-        raise OrderAlreadyPaidError("Order is already paid")
+        raise OrderAlreadyPaidError("order_already_paid")
 ```
 
-Usage:
+Required:
 
-```python
-def pay_order(order: Order) -> None:
-    _raise_if_order_already_paid(order)
-    order.status = "paid"
-```
+- fail fast at invariant boundaries
+- keep checks reusable and clearly named
 
-This helps because it:
+## 5. Map exceptions to responses in one place
 
-* keeps service code clean
-* makes rules reusable
-* gives checks clear names
+Use global exception handlers/middleware as the single mapping layer.
 
-Good examples:
+Required:
 
-* `_raise_if_user_not_owner(...)`
-* `_raise_if_order_closed(...)`
-* `_raise_if_balance_too_low(...)`
+- one mapping strategy for the whole service
+- no endpoint-level repeated `try/except` for common domain errors
 
----
+## 6. Keep one response error contract
 
-## 5. Map exceptions to HTTP responses in one place
-
-Use global FastAPI exception handlers.
-
-```python
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
-
-app = FastAPI()
-
-
-@app.exception_handler(NotFoundError)
-async def handle_not_found(request: Request, exc: NotFoundError):
-    return JSONResponse(
-        status_code=404,
-        content={"detail": str(exc)},
-    )
-
-
-@app.exception_handler(ConflictError)
-async def handle_conflict(request: Request, exc: ConflictError):
-    return JSONResponse(
-        status_code=409,
-        content={"detail": str(exc)},
-    )
-
-
-@app.exception_handler(Exception)
-async def handle_unexpected_error(request: Request, exc: Exception):
-    return JSONResponse(
-        status_code=500,
-        content={"detail": "Internal server error"},
-    )
-```
-
-Do not repeat `try/except` in every endpoint.
-
----
-
-## 6. Keep error responses consistent
-
-Use one format everywhere.
-
-Simple:
-
-```json
-{
-  "detail": "User not found"
-}
-```
-
-Better:
+All error responses must follow one schema.
 
 ```json
 {
@@ -190,177 +86,91 @@ Better:
 }
 ```
 
-Clients should always know what error shape to expect.
+Required:
 
----
+- stable `error.code` for client logic
+- human-readable `error.message`
 
-## 7. Use machine-readable error codes
+Forbidden:
 
-Do not rely only on free-text messages.
+- mixing multiple error shapes across endpoints
 
-```json
-{
-  "error": {
-    "code": "email_already_exists",
-    "message": "Email already exists"
-  }
-}
-```
+## 7. Never leak internals to clients
 
-This makes frontend and other clients easier to implement.
+Forbidden in API responses:
 
----
+- SQL errors
+- tracebacks
+- raw provider/library errors
+- internal stack details
 
-## 8. Log unexpected errors, not every business error
+Internal details belong in logs only.
 
-Expected domain errors usually do not need error-level logging.
-Unexpected failures should be logged with traceback.
+## 8. Wrap low-level exceptions at boundaries
+
+Translate infrastructure exceptions into application/domain exceptions.
 
 ```python
-import logging
-
-logger = logging.getLogger(__name__)
-
-
-@app.exception_handler(Exception)
-async def handle_unexpected_error(request: Request, exc: Exception):
-    logger.exception("Unhandled exception on %s", request.url.path)
-    return JSONResponse(
-        status_code=500,
-        content={"detail": "Internal server error"},
-    )
+try:
+    repo.create_user(email)
+except IntegrityError as exc:
+    raise EmailAlreadyExistsError("email_already_exists") from exc
 ```
 
----
+Required:
 
-## 9. Do not leak internal details to clients
+- preserve causality with `raise ... from exc`
+- keep low-level exception types from escaping domain boundaries
 
-Do not return DB errors, tracebacks, or library internals in API responses.
+## 9. Logging policy is strict
 
-Bad:
+Required:
 
-```json
-{
-  "detail": "psycopg2.errors.UniqueViolation: duplicate key value violates unique constraint"
-}
-```
+- log unexpected errors with traceback (`logger.exception`)
+- keep domain error logging low-noise (usually warning/info or no log)
+- include request context for unexpected failures
 
-Better:
+Forbidden:
 
-```json
-{
-  "error": {
-    "code": "email_already_exists",
-    "message": "Email already exists"
-  }
-}
-```
+- error-level logging for every expected business rejection
+- swallowing exceptions without logging or mapping
 
-Internal details belong in logs.
+## 10. Endpoints must stay thin
 
----
+Endpoints should only:
 
-## 10. Wrap low-level exceptions into meaningful application errors
+- parse/validate request
+- call service
+- return mapped response
 
-Translate infrastructure exceptions into app-specific ones.
+Forbidden:
 
-```python
-from sqlalchemy.exc import IntegrityError
+- embedding business decision logic in endpoints
+- ad-hoc domain checks in route handlers
 
+## 11. Error paths are mandatory test scope
 
-def create_user(email: str) -> User:
-    try:
-        return repo.create(email)
-    except IntegrityError as exc:
-        raise EmailAlreadyExistsError("Email already exists") from exc
-```
+For each endpoint/use case, tests must cover:
 
-Use `raise ... from exc` to preserve the original cause.
+- representative domain 4xx errors
+- one unexpected 500 path
+- response contract shape and error code
 
----
+## 12. Anti-patterns (not allowed)
 
-## 11. Keep endpoints thin
+- `except Exception: pass`
+- bare `except:`
+- raise new exception without preserving cause where cause matters
+- returning different error shapes for similar failures
+- using free-text messages as the only client contract
 
-Endpoints should:
+## 13. Pre-merge checklist
 
-* receive request
-* call service
-* return response
+Before merge, confirm:
 
-Bad:
-
-```python
-@app.post("/users")
-async def create_user(payload: CreateUserRequest):
-    if await repo.exists_by_email(payload.email):
-        raise HTTPException(status_code=409, detail="Email exists")
-```
-
-Better:
-
-```python
-@app.post("/users")
-async def create_user(payload: CreateUserRequest, service: UserServiceDep):
-    return await service.create_user(payload)
-```
-
-Business rules belong in services.
-
----
-
-## 12. Test error paths too
-
-Do not test only happy paths.
-
-Also test:
-
-* 404
-* 409
-* 403
-* invalid business state
-* unexpected 500
-
-```python
-def test_get_user_returns_404(client):
-    response = client.get("/users/123")
-
-    assert response.status_code == 404
-```
-
----
-
-# Recommended simple pattern
-
-* **FastAPI / Pydantic** validate request shape
-* **service layer** raises custom domain exceptions
-* **`_raise_if_*` helpers** validate business conditions
-* **global exception handlers** map exceptions to HTTP responses
-* **unexpected exceptions** are logged and returned as `500`
-
-## Minimal example
-
-```python
-class AppError(Exception):
-    pass
-
-
-class DomainError(AppError):
-    pass
-
-
-class NotFoundError(DomainError):
-    pass
-
-
-class UserNotFoundError(NotFoundError):
-    pass
-
-
-def _raise_if_user_not_found(user: User | None) -> None:
-    if user is None:
-        raise UserNotFoundError("User not found")
-```
-
-This is a clean default approach for most FastAPI projects.
-
-I can also turn this into a clean `.md` document version for your project docs.
+- domain and system errors are clearly separated
+- transport exceptions are not raised in domain/services
+- exception-to-HTTP mapping is centralized
+- error response schema is consistent
+- internals are not exposed to clients
+- key error paths are covered by tests
