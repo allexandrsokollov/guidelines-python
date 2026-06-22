@@ -85,9 +85,9 @@ REST_FRAMEWORK = {
 # apps/common/exception_handler.py
 def domain_exception_handler(exc, context):
     if isinstance(exc, NotFoundError):
-        return _error_response(exc.error_code, str(exc), status.HTTP_404_NOT_FOUND)
+        return _get_error_response(exc.error_code, str(exc), status.HTTP_404_NOT_FOUND)
     if isinstance(exc, ConflictError):
-        return _error_response(exc.error_code, str(exc), status.HTTP_409_CONFLICT)
+        return _get_error_response(exc.error_code, str(exc), status.HTTP_409_CONFLICT)
     return drf_exception_handler(exc, context)
 ```
 
