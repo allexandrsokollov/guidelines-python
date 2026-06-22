@@ -188,20 +188,25 @@ Forbidden:
 
 For each endpoint/use case, tests must cover:
 
+- the success result, asserting the entire returned payload to ensure the
+  response contract is correct (not just one or two fields)
 - representative domain 4xx errors
 - one unexpected 500 path
 - the response contract shape and error code
 
 DRF `APITestCase` is the entry point for these tests.
 
-## 12. Anti-patterns (not allowed)
+## 12. Anti-patterns — YOU MUST NEVER DO THE FOLLOWING
 
-- `except Exception: pass`
-- bare `except:`
-- raising a new exception without preserving cause where cause matters
-- returning different error shapes for similar failures
-- raising DRF exceptions from the domain layer
-- catching `DoesNotExist` in views as normal control flow
+The following are strictly forbidden. An AI agent MUST NEVER produce code that
+does any of these:
+
+- YOU MUST NEVER write `except Exception: pass`
+- YOU MUST NEVER write a bare `except:`
+- YOU MUST NEVER raise a new exception without preserving the cause where the cause matters
+- YOU MUST NEVER return different error shapes for similar failures
+- YOU MUST NEVER raise DRF exceptions from the domain layer
+- YOU MUST NEVER catch `DoesNotExist` in views as normal control flow
 
 ## 13. Pre-merge checklist
 
@@ -213,3 +218,4 @@ Before merge, confirm:
 - the error response schema is consistent
 - internals are not exposed to clients
 - key error paths are covered by `APITestCase` tests
+- all tests pass and all linters (ruff, mypy) report no errors

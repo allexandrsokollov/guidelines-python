@@ -163,14 +163,17 @@ Forbidden:
 - committing a real `.env`
 - missing template (a new developer does not know what to fill in)
 
-## 8. Anti-patterns (not allowed)
+## 8. Anti-patterns — YOU MUST NEVER DO THE FOLLOWING
 
-- hardcoding secrets in `settings.py`
-- `os.getenv` for the same setting in multiple places across the codebase
-- reading and converting env values in services/views instead of the settings module
-- `DEBUG = True` or an empty `SECRET_KEY` as a working state
-- business logic inside the settings module
-- unconditional production security settings that break local development
+The following are strictly forbidden. An AI agent MUST NEVER produce code that
+does any of these:
+
+- YOU MUST NEVER hardcode secrets in `settings.py`
+- YOU MUST NEVER read the same setting via `os.getenv` in multiple places across the codebase
+- YOU MUST NEVER read or convert env values in services/views instead of the settings module
+- YOU MUST NEVER leave `DEBUG = True` or an empty `SECRET_KEY` as a working state
+- YOU MUST NEVER put business logic inside the settings module
+- YOU MUST NEVER enable production security settings unconditionally in a way that breaks local development
 
 ## 9. Pre-merge checklist
 
@@ -183,3 +186,4 @@ Before merge, confirm:
 - environment variable names of one domain share a common prefix
 - production security settings are under `if not DEBUG`
 - `.env.example` is present and current, the real `.env` is in `.gitignore`
+- all tests pass and all linters (ruff, mypy) report no errors
