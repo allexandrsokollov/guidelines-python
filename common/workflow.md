@@ -1,9 +1,15 @@
 # Development Workflow Rules (Strict)
 
-These rules describe how work must be done. They are mandatory for every change,
-whether written by a human or an AI agent.
+These rules describe how work must be done. They apply to every change.
 
-## 1. One logical change per branch
+A clear boundary applies throughout:
+
+- **Git operations are performed by a human, never by an AI agent.** Creating
+  branches, staging, committing, pushing, opening pull requests, and merging are
+  human responsibilities. An AI agent MUST NOT run git commands or drive the git
+  history. An AI agent produces code and tests; the human reviews and commits them.
+
+## 1. One logical change per branch (human)
 
 Required:
 
@@ -16,7 +22,7 @@ Forbidden:
 - mixing unrelated changes in one branch
 - committing directly to `main`
 
-## 2. One logical change per commit
+## 2. One logical change per commit (human)
 
 Required:
 
@@ -29,7 +35,7 @@ Forbidden:
 - bundling unrelated changes into one commit
 - vague messages like `fix`, `update`, `changes`
 
-## 3. Check status before staging
+## 3. Review what is staged before committing (human)
 
 Required:
 
@@ -41,54 +47,31 @@ Forbidden:
 - blind `git add -A` without reviewing what is staged
 - committing generated files, secrets, or local artifacts
 
-## 4. Write code to the guidelines
+## 4. Tests are written with the code
 
-Before writing code, the relevant guidelines apply:
-
-- `common/clean_code.md` — readability, naming, structure
-- `common/typing.md` — explicit types and DTOs
-- `common/testing.md` — behavior-focused tests
-- the stack-specific error handling and settings rules (`django/` or `fastapi/`)
-
-An AI agent MUST follow these guidelines and MUST NOT silently relax them.
-
-## 5. Tests are part of the change
+Tests follow `common/testing.md`. In addition:
 
 Required:
 
 - add or update tests in the same change as the code
-- cover the success path (asserting the full response payload)
-- cover representative failure paths
-- keep tests deterministic and named by behavior
+- write tests according to the testing guideline
 
 Forbidden:
 
 - merging behavior changes without tests
-- asserting only status codes or one or two fields when the full contract matters
 
-## 6. Linters and type checks must pass
+## 5. Linters and type checks must pass
 
 Required:
 
-- run `ruff` and `mypy` before every commit intended for merge
+- run `ruff` and `mypy` before a change is committed for merge
 - fix the code so all linters and type checks report no errors
 
 YOU MUST NEVER weaken, disable, or reconfigure a linter rule to make an error go
 away. Suppressions (`# noqa`, `# type: ignore`) are exceptional, must be local
 and specific, and must carry a comment explaining the concrete reason.
 
-## 7. Self-review before requesting review
-
-Before opening a pull request, confirm:
-
-- the change is one logical unit
-- names are clear, types are complete, errors are explicit
-- tests cover success and key failure paths
-- all tests pass
-- `ruff` and `mypy` report no errors
-- no secrets, generated files, or local artifacts are staged
-
-## 8. Pull request and review
+## 6. Pull request and review (human)
 
 Required:
 
@@ -102,14 +85,14 @@ Forbidden:
 - merging without an approving review
 - ignoring or silently dropping review comments
 
-## 9. Pre-merge checklist
+## 7. Pre-merge checklist (human)
 
 Before merge, confirm:
 
 - the branch contains one logical change
 - commits are clean and messages are meaningful
 - code follows the applicable guidelines
-- tests are present and pass
+- tests are present, written per `common/testing.md`, and pass
 - `ruff` and `mypy` report no errors
 - all review comments are resolved
 - at least one approving review is present
