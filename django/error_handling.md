@@ -61,7 +61,7 @@ Use named guard helpers for important business checks.
 ```python
 def _raise_if_order_already_paid(order: Order) -> None:
     if order.status == "paid":
-        raise OrderAlreadyPaidError("order_already_paid")
+        raise ConflictError("order_already_paid")
 ```
 
 Required:
@@ -145,16 +145,19 @@ application/domain exceptions at the repository/service boundary.
 try:
     user = User.objects.get(phone=phone)
 except User.DoesNotExist as exc:
-    raise UserNotFoundError("user_not_found") from exc
+    raise NotFoundError("user_not_found") from exc
 ```
 
 Required:
 
 - preserve causality with `raise ... from exc`
 - keep low-level exception types (`DoesNotExist`, `IntegrityError`) from escaping the domain boundary
+- prefer generic, reusable exceptions (`NotFoundError`) over one class per entity;
+  carry the specifics in the error code (`user_not_found`, `order_not_found`), not in a new class
 
 Forbidden:
 
+- creating a separate exception class per business entity when a generic one fits
 - letting `Model.DoesNotExist` or `IntegrityError` propagate to views as control flow
 
 ## 9. Logging policy is strict
